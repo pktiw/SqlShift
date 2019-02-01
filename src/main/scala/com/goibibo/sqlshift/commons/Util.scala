@@ -51,23 +51,29 @@ object Util {
       * @return average size of record(row) in bytes
       */
     def getAvgRowSize(mysqlDBConf: DBConfiguration): Long = {
-        logger.info("Calculating average row size: {}", mysqlDBConf.toString)
-        val query = s"SELECT avg_row_length FROM information_schema.tables WHERE table_schema = " +
-                s"'${mysqlDBConf.db}' AND table_name = '${mysqlDBConf.tableName}'"
-        val connection = RedshiftUtil.getConnection(mysqlDBConf)
-        val result: ResultSet = connection.createStatement().executeQuery(query)
-        try {
-            result.next()
-            result.getLong(1)
-        } catch {
-            case e: Exception =>
-                logger.error("Failed in finding average row size of table from source")
-                logger.error("Stack Trace: ", e.fillInStackTrace())
-                0
-        } finally {
-            result.close()
-            connection.close()
+        //FIXMe: get this from the MS SqlServer database, Looks like it doesn't have avg_size, In this case we can take
+        //FIXME: table_size/total_Row_count, It seems to have both this metadata
+        if(mysqlDBConf.database == "sqlserver") 1024*5
+        else {
+            logger.info("Calculating average row size: {}", mysqlDBConf.toString)
+            val query = s"SELECT avg_row_length FROM information_schema.tables WHERE table_schema = " +
+              s"'${mysqlDBConf.db}' AND table_name = '${mysqlDBConf.tableName}'"
+            val connection = RedshiftUtil.getConnection(mysqlDBConf)
+            val result: ResultSet = connection.createStatement().executeQuery(query)
+            try {
+                result.next()
+                result.getLong(1)
+            } catch {
+                case e: Exception =>
+                    logger.error("Failed in finding average row size of table from source")
+                    logger.error("Stack Trace: ", e.fillInStackTrace())
+                    0
+            } finally {
+                result.close()
+                connection.close()
+            }
         }
+
     }
 
 
@@ -80,8 +86,8 @@ object Util {
       */
     def getMinMax(mysqlDBConf: DBConfiguration, distKey: String, whereCondition: Option[String] = None): (String, String) = {
         val connection = RedshiftUtil.getConnection(mysqlDBConf)
-
-        var query = s"SELECT min($distKey), max($distKey) FROM ${mysqlDBConf.db}.${mysqlDBConf.tableName}"
+        val tableName = RedshiftUtil.getTableNameWithSchema(mysqlDBConf)
+        var query = s"SELECT min($distKey), max($distKey) FROM ${mysqlDBConf.db}.${tableName}"
         if (whereCondition.nonEmpty) {
             query += " WHERE " + whereCondition.get
         }
@@ -147,13 +153,13 @@ object Util {
     private def getDBsConf(mysqlJson: JValue, redshiftJson: JValue, s3Json: JValue, table: JValue):
     (DBConfiguration, DBConfiguration, S3Config) = {
         implicit val formats = DefaultFormats
-
-        val mysqlConf: DBConfiguration = DBConfiguration("mysql", (mysqlJson \ "db").extract[String], null,
+        println(s"mysqlJson  = {$mysqlJson} table = ${table}")
+        val mysqlConf: DBConfiguration = DBConfiguration("sqlserver", (mysqlJson \ "db").extract[String], (mysqlJson \ "schema").extract[String],
             (table \ "name").extract[String], (mysqlJson \ "hostname").extract[String],
             (mysqlJson \ "portno").extract[Int], (mysqlJson \ "username").extract[String],
             (mysqlJson \ "password").extract[String])
 
-        val redshiftConf: DBConfiguration = DBConfiguration("redshift", "goibibo",
+        val redshiftConf: DBConfiguration = DBConfiguration("redshift", (redshiftJson \ "db").extract[String],
             (redshiftJson \ "schema").extract[String], (table \ "name").extract[String],
             (redshiftJson \ "hostname").extract[String], (redshiftJson \ "portno").extract[Int],
             (redshiftJson \ "username").extract[String], (redshiftJson \ "password").extract[String])
@@ -325,7 +331,7 @@ object Util {
 
             val details: List[JValue] = (json \ "configuration").extract[List[JValue]]
             for (detail <- details) {
-                val mysqlJson: JValue = (detail \ "mysql").extract[JValue]
+                val mysqlJson: JValue = (detail \ "sqlserver").extract[JValue]
                 val redshiftJson: JValue = (detail \ "redshift").extract[JValue]
                 val s3Json: JValue = (detail \ "s3").extract[JValue]
                 val tables: List[JValue] = (detail \ "tables").extract[List[JValue]]

@@ -19,6 +19,7 @@ import scopt.OptionParser
 
 import scala.collection.JavaConverters._
 
+
 /**
   * Entry point to RDS to Redshift data pipeline
   */
@@ -231,6 +232,8 @@ object SQLShift {
 
     def main(args: Array[String]): Unit = {
         logger.info("Reading Arguments")
+        val loggerj = java.util.logging.Logger.getLogger("com.microsoft.sqlserver.jdbc");
+        loggerj.setLevel(java.util.logging.Level.FINE);
         val appParams: AppParams = parser.parse(args, AppParams(null, null)).orNull
         if (appParams.tableDetailsPath == null) {
             logger.error("Table details json file is not provided!!!")

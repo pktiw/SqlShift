@@ -15,6 +15,7 @@ import scala.collection.immutable.{IndexedSeq, Set}
   * Author: shivamsharma
   * Date: 12/22/16.
   */
+
 object RedshiftUtil {
     private val logger = LoggerFactory.getLogger(RedshiftUtil.getClass)
 
@@ -24,7 +25,12 @@ object RedshiftUtil {
                             precisionMultiplier: Int = 1)
 
     def getJDBCUrl(conf: DBConfiguration): String = {
-        val jdbcUrl = s"jdbc:${conf.database}://${conf.hostname}:${conf.portNo}/${conf.db}"
+        val jdbcUrl = {
+            if (conf.database == "mysql")
+                s"jdbc:${conf.database}://${conf.hostname}:${conf.portNo}/${conf.db}"
+            else
+                s"jdbc:${conf.database}://${conf.hostname}:${conf.portNo};databaseName=${conf.db}"
+        }
         if (conf.database.toLowerCase == "mysql")
             jdbcUrl + "?zeroDateTimeBehavior=convertToNull"
         else jdbcUrl
@@ -35,7 +41,7 @@ object RedshiftUtil {
         connectionProps.put("user", conf.userName)
         connectionProps.put("password", conf.password)
         val connectionString = getJDBCUrl(conf)
-        Class.forName("com.mysql.jdbc.Driver")
+        Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver")
         Class.forName("com.amazon.redshift.jdbc4.Driver")
         DriverManager.getConnection(connectionString, connectionProps)
     }
@@ -105,7 +111,8 @@ object RedshiftUtil {
     def getTableDetails(con: Connection, conf: DBConfiguration, internalConfig: InternalConfig)
                        (implicit crashOnInvalidType: Boolean): TableDetails = {
         val stmt = con.createStatement()
-        val query = s"SELECT * from ${conf.db}.${conf.tableName} where 1 < 0"
+        val query = s"SELECT * from ${conf.db}.${getTableNameWithSchema(conf)} where 1 < 0"
+//        val query = s"SELECT * from ${conf.db}.${getTableNameWithSchema(conf)} where 1 < 0"
         val rs = stmt.executeQuery(query)
         val rsmd = rs.getMetaData
         val validFieldTypes = mysqlToRedshiftTypeConverter.keys.toSet
@@ -231,11 +238,11 @@ object RedshiftUtil {
 
     def getIndexes(con: Connection, setColumns: Set[String], conf: DBConfiguration): IndexedSeq[String] = {
         val meta = con.getMetaData
-        val resIndexes = meta.getIndexInfo(conf.db, null, conf.tableName, false, false)
+        val resIndexes = meta.getIndexInfo(conf.db, conf.schema, conf.tableName, false, false)
         var setIndexedColumns = scala.collection.immutable.Set[String]()
         while (resIndexes.next) {
             val columnName = resIndexes.getString(9)
-            if (setColumns.contains(columnName.toLowerCase)) {
+            if (columnName != null && setColumns.contains(columnName.toLowerCase)) {
                 setIndexedColumns = setIndexedColumns + columnName
             } else {
                 System.err.println(s"Rejected $columnName")
@@ -294,15 +301,18 @@ object RedshiftUtil {
             "TIME" -> RedshiftType("TIMESTAMP"),
             "DATETIME" -> RedshiftType("TIMESTAMP"),
             "TIMESTAMP" -> RedshiftType("TIMESTAMP"),
+            "NVARCHAR" -> RedshiftType("VARCHAR(1024)"),
+            "NUMERIC"-> RedshiftType("FLOAT8"),
+            "BIT"-> RedshiftType("BOOLEAN"),
             "YEAR" -> RedshiftType("INT")
         )
     }
 
-    def getDataFrameReader(mysqlConfig: DBConfiguration, sqlQuery: String, sqlContext: SQLContext): DataFrameReader = {
+    def getDataFrameReader(mysqlConfig: DBConfiguration, sqlQuery: String, sqlContext: SQLContext, driverClass:String): DataFrameReader = {
         sqlContext.read.format("jdbc").
                 option("url", getJDBCUrl(mysqlConfig)).
                 option("dbtable", sqlQuery).
-                option("driver", "com.mysql.jdbc.Driver").
+                option("driver", driverClass).
                 option("user", mysqlConfig.userName).
                 option("password", mysqlConfig.password)
     }

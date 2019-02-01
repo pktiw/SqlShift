@@ -101,30 +101,32 @@ object MySQLToRedshiftMigrator {
                         None
                 }
         }
-
+        val srcTableName = RedshiftUtil.getTableNameWithSchema(mysqlConfig)
+        val driverClass = "com.microsoft.sqlserver.jdbc.SQLServerDriver"
         val partitionedReader: DataFrame = partitionDetails match {
             case Some(predicates) =>
                 logger.info("Using partitionedRead {}", predicates)
+
                 val properties = new Properties()
                 properties.setProperty("user", mysqlConfig.userName)
                 properties.setProperty("password", mysqlConfig.password)
-
+                properties.setProperty("Driver", driverClass)
                 sqlContext.read.
-                        option("driver", "com.mysql.jdbc.Driver").
-                        option("fetchSize", Integer.MIN_VALUE.toString).
-                        option("fetchsize", Integer.MIN_VALUE.toString).
+                        option("driver", driverClass).
                         option("user", mysqlConfig.userName).
                         option("password", mysqlConfig.password).
-                        jdbc(RedshiftUtil.getJDBCUrl(mysqlConfig), mysqlConfig.tableName, predicates.toArray, properties)
+                        jdbc(RedshiftUtil.getJDBCUrl(mysqlConfig),  srcTableName, predicates.toArray, properties)
             case None =>
                 val tableQuery = internalConfig.incrementalSettings match {
                     case Some(incrementalSettings) =>
                         val whereCondition = getWhereCondition(incrementalSettings)
-                        s"""(SELECT * from ${mysqlConfig.tableName}${if (whereCondition.isDefined) " WHERE " + whereCondition.get else ""}) AS A"""
-                    case None => mysqlConfig.tableName
+                        s"""(SELECT * from ${srcTableName} WHERE 0<1)"""
+                    case None => srcTableName
                 }
-                logger.info("Using single partition read query = {}", tableQuery)
-                val dataReader = RedshiftUtil.getDataFrameReader(mysqlConfig, tableQuery, sqlContext)
+//              s"""(SELECT * from ${srcTableName}${if (whereCondition.isDefined) " WHERE " + whereCondition.get else ""})"""
+
+              logger.info("Using single partition read query = {}", tableQuery)
+                val dataReader = RedshiftUtil.getDataFrameReader(mysqlConfig, tableQuery, sqlContext,driverClass)
                 dataReader.load
         }
         val data = partitionedReader.selectExpr(tableDetails.validFields.map(_.fieldName): _*)
