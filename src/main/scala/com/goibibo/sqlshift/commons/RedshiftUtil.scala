@@ -26,10 +26,10 @@ object RedshiftUtil {
 
     def getJDBCUrl(conf: DBConfiguration): String = {
         val jdbcUrl = {
-            if (conf.database == "mysql")
-                s"jdbc:${conf.database}://${conf.hostname}:${conf.portNo}/${conf.db}"
-            else
+            if (conf.database == "sqlserver")
                 s"jdbc:${conf.database}://${conf.hostname}:${conf.portNo};databaseName=${conf.db}"
+            else
+                s"jdbc:${conf.database}://${conf.hostname}:${conf.portNo}/${conf.db}"
         }
         if (conf.database.toLowerCase == "mysql")
             jdbcUrl + "?zeroDateTimeBehavior=convertToNull"

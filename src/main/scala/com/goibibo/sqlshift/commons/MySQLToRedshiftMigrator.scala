@@ -120,7 +120,7 @@ object MySQLToRedshiftMigrator {
                 val tableQuery = internalConfig.incrementalSettings match {
                     case Some(incrementalSettings) =>
                         val whereCondition = getWhereCondition(incrementalSettings)
-                        s"""(SELECT * from ${srcTableName} WHERE 0<1)"""
+                         s"""(SELECT * from ${srcTableName} ${if (whereCondition.isDefined) " WHERE " + whereCondition.get else ""}) AS A"""
                     case None => srcTableName
                 }
 //              s"""(SELECT * from ${srcTableName}${if (whereCondition.isDefined) " WHERE " + whereCondition.get else ""})"""
@@ -129,7 +129,7 @@ object MySQLToRedshiftMigrator {
                 val dataReader = RedshiftUtil.getDataFrameReader(mysqlConfig, tableQuery, sqlContext,driverClass)
                 dataReader.load
         }
-        val data = partitionedReader.selectExpr(tableDetails.validFields.map(_.fieldName): _*)
+        val data = partitionedReader.selectExpr(tableDetails.validFields.map("`" + _.fieldName + "`" ): _*)
         val dataWithTypesFixed = tableDetails.validFields.filter(_.javaType.isDefined).foldLeft(data) {
             (df, dbField) => {
                 val modifiedCol = df.col(dbField.fieldName).cast(dbField.javaType.get)

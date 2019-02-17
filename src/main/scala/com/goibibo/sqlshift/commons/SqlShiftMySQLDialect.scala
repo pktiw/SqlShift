@@ -9,7 +9,7 @@ import org.apache.spark.sql.types.{DataType, IntegerType, LongType, MetadataBuil
 
 case object SqlShiftMySQLDialect extends JdbcDialect {
 
-    override def canHandle(url: String): Boolean = ( url.startsWith("jdbc:mysql") || url.startsWith("jdbc:sqlserver"))
+    override def canHandle(url: String): Boolean = url.startsWith("jdbc:mysql") 
 
     override def getCatalystType(sqlType: Int, typeName: String, size: Int, md: MetadataBuilder): Option[DataType] = {
         if (sqlType == Types.VARBINARY && typeName.equals("BIT") && size != 1) {
@@ -37,7 +37,7 @@ case object SqlShiftMySQLDialect extends JdbcDialect {
         val dialectsField = JdbcDialects.getClass.getDeclaredFields.filter(_.getName == "dialects")(0)
         dialectsField.setAccessible(true)
         val mySqlDialect =  dialectsField.get(JdbcDialects).asInstanceOf[List[JdbcDialect]].
-                filter(a => a.canHandle("jdbc:mysql") || a.canHandle("jdbc:sqlserver") ).head
+                filter(a => a.canHandle("jdbc:mysql") ).head
         JdbcDialects.unregisterDialect(mySqlDialect)
         JdbcDialects.registerDialect(SqlShiftMySQLDialect)
         /* Registration done */

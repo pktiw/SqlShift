@@ -1,6 +1,6 @@
 name := "sqlshift"
 organization := "com.goibibo"
-version := "0.1"
+version := "0.2"
 scalaVersion := "2.10.6"
 logLevel := Level.Info
 
