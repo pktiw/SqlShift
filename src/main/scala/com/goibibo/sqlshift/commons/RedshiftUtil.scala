@@ -277,6 +277,7 @@ object RedshiftUtil {
             "BIGINT" -> RedshiftType("INT8"),
             "BIGINT UNSIGNED" -> RedshiftType("INT8"), //Corner case indeed makes this buggy, Just hoping that it does not occure!
             "FLOAT" -> RedshiftType("FLOAT4"),
+            "FLOAT UNSIGNED" -> RedshiftType("FLOAT4"),
             "DOUBLE" -> RedshiftType("FLOAT8"),
             "DOUBLE UNSIGNED" -> RedshiftType("FLOAT8"),
             "DECIMAL" -> RedshiftType("FLOAT8"),
