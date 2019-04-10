@@ -8,7 +8,8 @@ resolvers ++= Seq(
     "Typesafe" at "http://repo.typesafe.com/typesafe/releases/",
     "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
     "Cloudera" at "https://repository.cloudera.com/content/repositories/releases",
-    "S3" at "https://s3-ap-south-1.amazonaws.com/goibibo-libs/repo"
+    "jitpack" at "https://jitpack.io",
+    "redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release"
 )
 
 val sparkVersion = "1.6.0"
@@ -37,10 +38,11 @@ libraryDependencies ++= Seq(
             exclude("com.fasterxml.jackson.core", "jackson-databind").
             exclude("com.fasterxml.jackson.core", "jackson-annotations")
             exclude("org.apache.hadoop", "hadoop-common"),
+    "com.amazon.redshift" % "redshift-jdbc4" % "1.2.10.1009",
     "com.github.scopt" %% "scopt" % "3.5.0",
     "javax.mail" % "mail" % "1.4.7",
     "io.dropwizard" % "dropwizard-metrics" % "1.0.5",
-    "com.goibibo" % "dataplatform_utils_2.10" % "1.6",
+    "com.github.goibibo" %% "dataplatform_utils" % "v1.6",
     "ch.qos.logback" % "logback-classic" % "1.2.3",
     "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.7.8",
     "org.scalatest" %% "scalatest" % scalaTestVersion % Test,
@@ -51,7 +53,6 @@ libraryDependencies ++= Seq(
 
 envVars in Test := Map("DOCKER_HOST" -> "unix:///var/run/docker.sock")
 
-unmanagedJars in Compile += file("lib/RedshiftJDBC4-1.1.17.1017.jar")
 parallelExecution in Test := false
 
 scalacOptions ++= Seq(

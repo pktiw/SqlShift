@@ -287,6 +287,7 @@ object RedshiftUtil {
             "TEXT" -> RedshiftType(s"VARCHAR($maxVarcharSize)"),
             "MEDIUMTEXT" -> RedshiftType(s"VARCHAR($maxVarcharSize)"),
             "LONGTEXT" -> RedshiftType(s"VARCHAR($maxVarcharSize)"),
+            "JSON" -> RedshiftType(s"VARCHAR($maxVarcharSize)"),
             "BOOLEAN" -> RedshiftType("BOOLEAN"),
             "BOOL" -> RedshiftType("BOOLEAN"),
             "ENUM" -> RedshiftType("VARCHAR(255)"),
