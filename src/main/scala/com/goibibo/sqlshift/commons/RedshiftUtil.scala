@@ -123,10 +123,8 @@ object RedshiftUtil {
                 val redshiftColumnType = convertMySqlTypeToRedshiftType(columnType, precision, scale)
                 val javaTypeMapping = {
                     if (redshiftColumnType == "TIMESTAMP" || redshiftColumnType == "DATE") Some("String")
+                    else if (columnType == "TINYINT UNSIGNED") Some("Integer")
                     else None
-                    columnType match {
-                      case "TINYINT UNSIGNED" => Some("Integer")
-                    }
                 }
                 validFields = validFields :+ DBField(rsmd.getColumnName(i), redshiftColumnType, javaTypeMapping)
 
