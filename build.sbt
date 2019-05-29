@@ -18,7 +18,7 @@ val dockerItScalaVersion = "0.9.0"
 val scalaTestVersion = "3.0.1"
 
 libraryDependencies ++= Seq(
-    "mysql" % "mysql-connector-java" % "5.1.39",
+    "mysql" % "mysql-connector-java" % "5.1.47",
     "org.apache.spark" %% "spark-core" % sparkVersion % Provided,
     "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
     ("com.databricks" %% "spark-redshift" % "1.1.0").
