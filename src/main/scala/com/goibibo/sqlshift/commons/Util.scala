@@ -300,11 +300,17 @@ object Util {
         else
             Some(snapshotOptimizingFilterValue.extract[String])
         logger.info("Business logic: {}", snapshotOptimizingFilter.orNull)
+       
+        val deltaTimeJValue: JValue = table \ "deltaTime"
+        val deltaTime: Option[Int] = if (deltaTimeJValue == JNothing || deltaTimeJValue == JNull)
+            Some(10) 
+        else
+            Some(deltaTimeJValue.extract[Int])
 
         val incrementalSettings: IncrementalSettings = IncrementalSettings(shallMerge = shallMerge, mergeKey = mergeKey,
             shallVacuumAfterLoad = shallVacuumAfterLoad, customSelectFromStaging = addColumn, isAppendOnly = isAppendOnly,
             incrementalColumn = incrementalColumn, fromOffset = fromOffset, toOffset = toOffset, isSnapshot = isSnapshot,
-            fieldsToDeduplicateOn = fieldsToDeduplicateOn, snapshotOptimizingFilter = snapshotOptimizingFilter, autoIncremental = autoIncremental)
+            fieldsToDeduplicateOn = fieldsToDeduplicateOn, snapshotOptimizingFilter = snapshotOptimizingFilter, autoIncremental = autoIncremental, deltaTime = deltaTime)
 
 
         val settings: Some[IncrementalSettings] = Some(incrementalSettings)
