@@ -6,7 +6,7 @@ import java.sql.ResultSet
 import com.goibibo.sqlshift.models.Configurations._
 import com.goibibo.sqlshift.models.InternalConfs.{IncrementalSettings, InternalConfig}
 import com.goibibo.sqlshift.models._
-import org.apache.spark.sql.SQLContext
+import org.apache.spark.sql.{SQLContext, SparkSession}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.json4s.jackson.JsonMethods._
 import org.json4s.{DefaultFormats, _}
@@ -125,9 +125,17 @@ object Util {
 
     def getSparkContext: (SparkContext, SQLContext) = {
         logger.info("Starting spark context...")
-        val sparkConf: SparkConf = new SparkConf().setAppName("RDS to Redshift DataPipeline")
-        val sc: SparkContext = new SparkContext(sparkConf)
-        val sqlContext: SQLContext = new SQLContext(sc)
+
+        val sparkSession: SparkSession = SparkSession
+          .builder()
+          .config("spark.sql.parquet.fs.optimized.committer.optimization-enabled", "true")
+          .config("hive.metastore.client.factory.class", "com.amazonaws.glue.catalog.metastore.AWSGlueDataCatalogHiveClientFactory")
+          .enableHiveSupport()
+          .appName("RDS to Redshift DataPipeline")
+          .getOrCreate()
+
+        val sc: SparkContext = sparkSession.sparkContext
+        val sqlContext = sparkSession.sqlContext
 
         System.setProperty("com.amazonaws.services.s3.enableV4", "true")
         sc.hadoopConfiguration.set("fs.s3a.endpoint", "s3.ap-south-1.amazonaws.com")
