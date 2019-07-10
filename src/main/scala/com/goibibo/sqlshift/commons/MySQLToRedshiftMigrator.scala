@@ -6,10 +6,11 @@ import java.util.regex._
 import com.goibibo.sqlshift.models.Configurations.{DBConfiguration, S3Config}
 import com.goibibo.sqlshift.models.InternalConfs.{DBField, IncrementalSettings, InternalConfig, TableDetails}
 import org.apache.spark.sql._
-import org.apache.spark.sql.types.{DataType, IntegerType, TimestampType}
-import org.apache.spark.sql.types.DataType._
+import org.apache.spark.sql.types._
+import java.sql.Timestamp
 import org.slf4j.{Logger, LoggerFactory}
-
+import java.time.format.DateTimeFormatter
+import java.time.LocalDateTime
 import scala.collection.immutable.Seq
 
 /*
@@ -21,7 +22,7 @@ object MySQLToRedshiftMigrator {
     private val logger: Logger = LoggerFactory.getLogger(MySQLToRedshiftMigrator.getClass)
 
     private def getFromAndToOffset(incrementalSettings: Option[IncrementalSettings],
-        distKeyType:Option[DataType], minMax:(String,String)): Option[String] = {
+        distKeyType:Option[DataType], minMax:(String,String)): Option[(Any,Any)] = {
 
         val minMax: (Option[Any], Option[Any]) = if (distKeyType.isDefined){
             distKeyType.get match {
@@ -36,6 +37,13 @@ object MySQLToRedshiftMigrator {
                     // If it's not incremental then take min time from minMax
                     // If it's incremental then use fromOffset, If delta is definited then
                     //      subtract delta from fromOffset
+                    val fromOffset = if(incrementalSettings.isEmpty) {
+                        minMax._1.asInstanceOf[Timestamp]
+                    } else {
+                        val fromOffsetTs = incrementalSettings.get.fromOffset
+                        //val format = DateTimeFormatter.ISO_DATE_TIME;
+                        //val date = LocalDateTime.parse("2015-06-24T03:19:46", format);
+                    }
                     val fromOffset  = incrementalSettings.get.fromOffset.get
 //                    map(d => s"date_sub('${fromOffset.get}' , INTERVAL '${d}' MINUTE )").
 //                      getOrElse(incrementalSettings.fromOffset)
