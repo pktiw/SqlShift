@@ -6,6 +6,7 @@ import java.util.regex._
 import com.goibibo.sqlshift.models.Configurations.{DBConfiguration, S3Config}
 import com.goibibo.sqlshift.models.InternalConfs.{IncrementalSettings, InternalConfig, TableDetails, DBField}
 import org.apache.spark.sql._
+import org.apache.spark.sql.types.DataType._
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.immutable.Seq
@@ -17,6 +18,45 @@ import scala.collection.immutable.Seq
 
 object MySQLToRedshiftMigrator {
     private val logger: Logger = LoggerFactory.getLogger(MySQLToRedshiftMigrator.getClass)
+
+    private def getFromAndToOffsetTimestamp(incrementalSettings: Option[IncrementalSettings], 
+        distKeyType:Option[DataType], minMax:(String,String)): Option[(String, String)] = {
+        
+        distKeyType.isDefined match {
+            case Some(a:IntegerType) => {
+                // If it's not incremental then take min time from minMax
+                // If it's incremental then use fromOffset
+            }
+            case Some(a:TimestampType) => {
+                // If it's not incremental then take min time from minMax
+                // If it's incremental then use fromOffset, If delta is definited then 
+                //      subtract delta from fromOffset
+                val fromOffset  = incrementalSettings.map.deltaTime.
+                                    .flatMap()
+                                    map(d => s"date_sub('${fromOffset.get}' , INTERVAL '${d}' MINUTE )").
+                                    getOrElse(incrementalSettings.fromOffset)
+                val toOffset    = minMax._2
+                Some(fromOffset, toOffset)
+            }
+        } else None
+
+        
+        val column = incrementalSettings.incrementalColumn
+        
+        val toOffset = incrementalSettings.toOffset
+        logger.info(s"Found incremental condition. Column: ${column.orNull}, fromOffset: " +
+                s"${fromOffset.orNull}, toOffset: ${toOffset.orNull}, deltaTime : ${deltaTime.orNull}")
+        if (column.isDefined && fromOffset.isDefined && toOffset.isDefined) {
+            Some(s"${column.get} BETWEEN  AND '${toOffset.get}'")
+        } else if (column.isDefined && fromOffset.isDefined) {
+            Some(s"${column.get} >= date_sub('${fromOffset.get}' , INTERVAL '${deltaTime.get}' MINUTE )")
+        } else if (column.isDefined && toOffset.isDefined) {
+            Some(s"${column.get} <= date_sub('${fromOffset.get}' , INTERVAL '${deltaTime.get}' MINUTE )")
+        } else {
+            logger.info("Either of column or (fromOffset/toOffset) is not provided")
+            None
+        }
+    }
 
     private def getWhereCondition(incrementalSettings: IncrementalSettings): Option[String] = {
 
@@ -65,20 +105,26 @@ object MySQLToRedshiftMigrator {
                         val typeOfDistKey = tableDetails.validFields.filter(_.fieldName == distKey).head.fieldType
                         //Spark supports only long to break the table into multiple fields
                         //https://github.com/apache/spark/blob/branch-1.6/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/jdbc/JDBCRelation.scala#L33
-                        if (typeOfDistKey.startsWith("INT")) {
+                        val distKeyType:Option[DataType] = {
+                            if(typeOfDistKey == "TIMESTAMP") Some(TimestampType)
+                            else if typeOfDistKey.startsWith("INT") Some(IntegerType)
+                            else None
+                        }
+                        if ( distKeyType.isDefined && 
+                                (distKeyType.get == TimestampType || distKeyType.get == IntegerType)) {
+                            val minMaxTmp: (String, String) = Util.getMinMax(mysqlConfig, distKey, whereCondition)
 
                             //TODO: SmartFullDump
                             //Finding out whereCondition is not required because in the case of incremental
                             //We directy cut based on timestamp field
-                            val whereCondition = internalConfig.incrementalSettings match {
-                                case Some(incrementalSettings) =>
-                                    getWhereCondition(incrementalSettings)
-                                case None =>
-                                    logger.info("No incremental condition found")
-                                    None
-                            }
-
-                            val minMaxTmp: (String, String) = Util.getMinMax(mysqlConfig, distKey, whereCondition)
+                            // val whereCondition = internalConfig.incrementalSettings match {
+                            //     case Some(incrementalSettings) =>
+                            //         getWhereCondition(incrementalSettings)
+                            //     case None =>
+                            //         logger.info("No incremental condition found")
+                            //         None
+                            // }
+                            
                             val minMax: (Long, Long) = (minMaxTmp._1.toLong, minMaxTmp._2.toLong)
                             val nr: Long = minMax._2 - minMax._1 + 1
 
@@ -97,10 +143,6 @@ object MySQLToRedshiftMigrator {
                                         map(c => if (whereCondition.isDefined) c + s"AND (${whereCondition.get})" else c)
                                 Some(predicates)
                             }
-                        }
-                        else if(typeOfDistKey.startsWith("TIMESTAMP")) {
-                            //TODO: SmartFullDump
-
                         }
                         else {
                             logger.warn(s"primary keys is non INT $typeOfPrimaryKey")
