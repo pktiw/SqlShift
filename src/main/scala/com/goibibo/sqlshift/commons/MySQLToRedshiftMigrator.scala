@@ -61,12 +61,15 @@ object MySQLToRedshiftMigrator {
             case _ =>
                 logger.info("shallSplit either not set or true")
                 tableDetails.distributionKey match {
-                    case Some(primaryKey) =>
-                        val typeOfPrimaryKey = tableDetails.validFields.filter(_.fieldName == primaryKey).head.fieldType
+                    case Some(distKey) =>
+                        val typeOfDistKey = tableDetails.validFields.filter(_.fieldName == distKey).head.fieldType
                         //Spark supports only long to break the table into multiple fields
                         //https://github.com/apache/spark/blob/branch-1.6/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/jdbc/JDBCRelation.scala#L33
-                        if (typeOfPrimaryKey.startsWith("INT")) {
+                        if (typeOfDistKey.startsWith("INT")) {
 
+                            //TODO: SmartFullDump
+                            //Finding out whereCondition is not required because in the case of incremental
+                            //We directy cut based on timestamp field
                             val whereCondition = internalConfig.incrementalSettings match {
                                 case Some(incrementalSettings) =>
                                     getWhereCondition(incrementalSettings)
@@ -75,7 +78,7 @@ object MySQLToRedshiftMigrator {
                                     None
                             }
 
-                            val minMaxTmp: (String, String) = Util.getMinMax(mysqlConfig, primaryKey, whereCondition)
+                            val minMaxTmp: (String, String) = Util.getMinMax(mysqlConfig, distKey, whereCondition)
                             val minMax: (Long, Long) = (minMaxTmp._1.toLong, minMaxTmp._2.toLong)
                             val nr: Long = minMax._2 - minMax._1 + 1
 
@@ -89,12 +92,17 @@ object MySQLToRedshiftMigrator {
                                 val inc: Long = Math.ceil(nr.toDouble / mapPartitions).toLong
                                 val predicates = (0 until mapPartitions).toList.
                                         map { n =>
-                                            s"$primaryKey BETWEEN ${minMax._1 + n * inc} AND ${minMax._1 - 1 + (n + 1) * inc} "
+                                            s"$distKey BETWEEN ${minMax._1 + n * inc} AND ${minMax._1 - 1 + (n + 1) * inc} "
                                         }.
                                         map(c => if (whereCondition.isDefined) c + s"AND (${whereCondition.get})" else c)
                                 Some(predicates)
                             }
-                        } else {
+                        }
+                        else if(typeOfDistKey.startsWith("TIMESTAMP")) {
+                            //TODO: SmartFullDump
+
+                        }
+                        else {
                             logger.warn(s"primary keys is non INT $typeOfPrimaryKey")
                             None
                         }
