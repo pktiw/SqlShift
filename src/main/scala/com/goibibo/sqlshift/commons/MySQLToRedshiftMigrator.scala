@@ -19,17 +19,19 @@ object MySQLToRedshiftMigrator {
     private val logger: Logger = LoggerFactory.getLogger(MySQLToRedshiftMigrator.getClass)
 
     private def getWhereCondition(incrementalSettings: IncrementalSettings): Option[String] = {
+
+        val deltaTime = incrementalSettings.deltaTime
         val column = incrementalSettings.incrementalColumn
         val fromOffset = incrementalSettings.fromOffset
         val toOffset = incrementalSettings.toOffset
         logger.info(s"Found incremental condition. Column: ${column.orNull}, fromOffset: " +
-                s"${fromOffset.orNull}, toOffset: ${toOffset.orNull}")
+                s"${fromOffset.orNull}, toOffset: ${toOffset.orNull}, deltaTime : ${deltaTime.orNull}")
         if (column.isDefined && fromOffset.isDefined && toOffset.isDefined) {
-            Some(s"${column.get} BETWEEN '${fromOffset.get}' AND '${toOffset.get}'")
+            Some(s"${column.get} BETWEEN date_sub('${fromOffset.get}' , INTERVAL '${deltaTime.get}' MINUTE ) AND '${toOffset.get}'")
         } else if (column.isDefined && fromOffset.isDefined) {
-            Some(s"${column.get} >= '${fromOffset.get}'")
+            Some(s"${column.get} >= date_sub('${fromOffset.get}' , INTERVAL '${deltaTime.get}' MINUTE )")
         } else if (column.isDefined && toOffset.isDefined) {
-            Some(s"${column.get} <= '${toOffset.get}'")
+            Some(s"${column.get} <= date_sub('${fromOffset.get}' , INTERVAL '${deltaTime.get}' MINUTE )")
         } else {
             logger.info("Either of column or (fromOffset/toOffset) is not provided")
             None
@@ -230,10 +232,10 @@ object MySQLToRedshiftMigrator {
                 case None =>
                     logger.info("No dropStagingTableString and No vacuum, internalConfig.incrementalSettings is None")
                     ("", "", false, Seq[String](),"", false, None, None)
-                case Some(IncrementalSettings(shallMerge, stagingTableMergeKey, vaccumAfterLoad, cs, true, incrementalColumn, fromOffset, toOffset, isSnapshot, fieldsToDeduplicateOn, snapshotOptimizingFilter, _)) =>
+                case Some(IncrementalSettings(shallMerge, stagingTableMergeKey, vaccumAfterLoad, cs, true, incrementalColumn, fromOffset, toOffset, isSnapshot, fieldsToDeduplicateOn, snapshotOptimizingFilter, deltaTime, _)) =>
                     logger.info("Incremental update is append only")
                     ("", "", false, Seq[String](),incrementalColumn, false, None, None)
-                case Some(IncrementalSettings(shallMerge, stagingTableMergeKey, vaccumAfterLoad, cs, false, incrementalColumn, fromOffset, toOffset, isSnapshot, fieldsToDeduplicateOn, snapshotOptimizingFilter, _)) =>
+                case Some(IncrementalSettings(shallMerge, stagingTableMergeKey, vaccumAfterLoad, cs, false, incrementalColumn, fromOffset, toOffset, isSnapshot, fieldsToDeduplicateOn, snapshotOptimizingFilter, deltaTime, _)) =>
                     val dropStatingTableStr = if (shallMerge || isSnapshot) s"DROP TABLE IF EXISTS $redshiftStagingTableName;" else ""
 
                     logger.info(s"dropStatingTableStr = {}", dropStatingTableStr)
