@@ -52,8 +52,11 @@ libraryDependencies ++= Seq(
     "org.scalatest" %% "scalatest" % scalaTestVersion % Test,
     "com.whisk" %% "docker-testkit-scalatest" % dockerItScalaVersion % Test,
     "com.whisk" %% "docker-testkit-impl-spotify" % dockerItScalaVersion % Test,
-    "com.databricks" %% "spark-csv" % "1.1.0" % Test
+    "com.databricks" %% "spark-csv" % "1.1.0" % Test,
+
 ).map(_.exclude("org.slf4j", "slf4j-log4j12"))
+// https://mvnrepository.com/artifact/joda-time/joda-time
+libraryDependencies += "joda-time" % "joda-time" % "2.9.9"
 
 envVars in Test := Map("DOCKER_HOST" -> "unix:///var/run/docker.sock")
 
