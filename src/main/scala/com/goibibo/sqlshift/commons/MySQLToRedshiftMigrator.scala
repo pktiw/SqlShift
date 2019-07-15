@@ -4,11 +4,18 @@ import java.util.Properties
 import java.util.regex._
 
 import com.goibibo.sqlshift.models.Configurations.{DBConfiguration, S3Config}
-import com.goibibo.sqlshift.models.InternalConfs.{IncrementalSettings, InternalConfig, TableDetails, DBField}
+import com.goibibo.sqlshift.models.InternalConfs.{DBField, IncrementalSettings, InternalConfig, TableDetails}
 import org.apache.spark.sql._
+import org.apache.spark.sql.types._
+import java.sql.Timestamp
+
 import org.slf4j.{Logger, LoggerFactory}
+import java.time.format.DateTimeFormatter
+import java.time.LocalDateTime
 
 import scala.collection.immutable.Seq
+import Util.{getIntegralPredicates, getTimestampPredicates}
+import org.joda.time.{DateTime, DateTimeZone}
 
 /*
 --packages "org.apache.hadoop:hadoop-aws:2.7.2,com.databricks:spark-redshift_2.10:1.1.0,com.amazonaws:aws-java-sdk:1.7.4,mysql:mysql-connector-java:5.1.39"
@@ -19,17 +26,19 @@ object MySQLToRedshiftMigrator {
     private val logger: Logger = LoggerFactory.getLogger(MySQLToRedshiftMigrator.getClass)
 
     private def getWhereCondition(incrementalSettings: IncrementalSettings): Option[String] = {
+
+        val deltaTime = incrementalSettings.deltaTime
         val column = incrementalSettings.incrementalColumn
         val fromOffset = incrementalSettings.fromOffset
         val toOffset = incrementalSettings.toOffset
         logger.info(s"Found incremental condition. Column: ${column.orNull}, fromOffset: " +
-                s"${fromOffset.orNull}, toOffset: ${toOffset.orNull}")
+                s"${fromOffset.orNull}, toOffset: ${toOffset.orNull}, deltaTime : ${deltaTime.orNull}")
         if (column.isDefined && fromOffset.isDefined && toOffset.isDefined) {
-            Some(s"${column.get} BETWEEN '${fromOffset.get}' AND '${toOffset.get}'")
+            Some(s"${column.get} BETWEEN date_sub('${fromOffset.get}' , INTERVAL '${deltaTime.get}' MINUTE ) AND '${toOffset.get}'")
         } else if (column.isDefined && fromOffset.isDefined) {
-            Some(s"${column.get} >= '${fromOffset.get}'")
+            Some(s"${column.get} >= date_sub('${fromOffset.get}' , INTERVAL '${deltaTime.get}' MINUTE )")
         } else if (column.isDefined && toOffset.isDefined) {
-            Some(s"${column.get} <= '${toOffset.get}'")
+            Some(s"${column.get} <= date_sub('${fromOffset.get}' , INTERVAL '${deltaTime.get}' MINUTE )")
         } else {
             logger.info("Either of column or (fromOffset/toOffset) is not provided")
             None
@@ -52,48 +61,37 @@ object MySQLToRedshiftMigrator {
         val tableDetails: TableDetails = RedshiftUtil.getValidFieldNames(mysqlConfig, internalConfig)
         logger.info("Table details: \n{}", tableDetails.toString)
         SqlShiftMySQLDialect.registerDialect()
-        val partitionDetails: Option[Seq[String]] = internalConfig.shallSplit match {
+        val partitionDetails: Option[scala.Seq[String]] = internalConfig.shallSplit match {
             case Some(false) =>
                 logger.info("shallSplit is false")
                 None
             case _ =>
                 logger.info("shallSplit either not set or true")
-                tableDetails.distributionKey match {
-                    case Some(primaryKey) =>
-                        val typeOfPrimaryKey = tableDetails.validFields.filter(_.fieldName == primaryKey).head.fieldType
+                 tableDetails.distributionKey match {
+                    case Some(distKey) =>
+                        val typeOfDistKey = tableDetails.validFields.filter(_.fieldName == distKey).head.fieldType
                         //Spark supports only long to break the table into multiple fields
                         //https://github.com/apache/spark/blob/branch-1.6/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/jdbc/JDBCRelation.scala#L33
-                        if (typeOfPrimaryKey.startsWith("INT")) {
+                        val distKeyType:Option[DataType] = {
+                            if(typeOfDistKey == "TIMESTAMP") Some(TimestampType)
+                            else if (typeOfDistKey.startsWith("INT")) Some(IntegerType)
+                            else None
+                        }
+                        if ( distKeyType.isDefined  ){
 
-                            val whereCondition = internalConfig.incrementalSettings match {
-                                case Some(incrementalSettings) =>
-                                    getWhereCondition(incrementalSettings)
-                                case None =>
-                                    logger.info("No incremental condition found")
-                                    None
+                            val minTimestamp = Util.getDateTimeFromUTCTimestamp(internalConfig.incrementalSettings.get.fromOffset.get)
+                            val maxTimestamp = internalConfig.incrementalSettings.get.toOffset match {
+                                case Some(toOffsetTimeStr:String) => Util.getDateTimeFromUTCTimestamp(toOffsetTimeStr)
+                                case None => DateTime.now(DateTimeZone.UTC)
                             }
 
-                            val minMaxTmp: (String, String) = Util.getMinMax(mysqlConfig, primaryKey, whereCondition)
-                            val minMax: (Long, Long) = (minMaxTmp._1.toLong, minMaxTmp._2.toLong)
-                            val nr: Long = minMax._2 - minMax._1 + 1
-
-                            val mapPartitions = internalConfig.mapPartitions match {
-                                case Some(partitions) => partitions
-                                case None => Util.getPartitions(sqlContext, mysqlConfig, minMax)
+                            distKeyType.get match {
+                                case _:TimestampType => getTimestampPredicates(mysqlConfig, sqlContext, internalConfig, distKey, minTimestamp , maxTimestamp )
+                                case _:IntegerType => getIntegralPredicates(mysqlConfig,sqlContext,internalConfig,distKey)
                             }
-                            if (mapPartitions == 0) {
-                                None
-                            } else {
-                                val inc: Long = Math.ceil(nr.toDouble / mapPartitions).toLong
-                                val predicates = (0 until mapPartitions).toList.
-                                        map { n =>
-                                            s"$primaryKey BETWEEN ${minMax._1 + n * inc} AND ${minMax._1 - 1 + (n + 1) * inc} "
-                                        }.
-                                        map(c => if (whereCondition.isDefined) c + s"AND (${whereCondition.get})" else c)
-                                Some(predicates)
-                            }
-                        } else {
-                            logger.warn(s"primary keys is non INT $typeOfPrimaryKey")
+                        }
+                        else {
+                            //logger.warn(s"primary keys is non INT $typeOfPrimaryKey")
                             None
                         }
                     case None =>
@@ -230,10 +228,10 @@ object MySQLToRedshiftMigrator {
                 case None =>
                     logger.info("No dropStagingTableString and No vacuum, internalConfig.incrementalSettings is None")
                     ("", "", false, Seq[String](),"", false, None, None)
-                case Some(IncrementalSettings(shallMerge, stagingTableMergeKey, vaccumAfterLoad, cs, true, incrementalColumn, fromOffset, toOffset, isSnapshot, fieldsToDeduplicateOn, snapshotOptimizingFilter, _)) =>
+                case Some(IncrementalSettings(shallMerge, stagingTableMergeKey, vaccumAfterLoad, cs, true, incrementalColumn, fromOffset, toOffset, isSnapshot, fieldsToDeduplicateOn, snapshotOptimizingFilter, deltaTime, _)) =>
                     logger.info("Incremental update is append only")
                     ("", "", false, Seq[String](),incrementalColumn, false, None, None)
-                case Some(IncrementalSettings(shallMerge, stagingTableMergeKey, vaccumAfterLoad, cs, false, incrementalColumn, fromOffset, toOffset, isSnapshot, fieldsToDeduplicateOn, snapshotOptimizingFilter, _)) =>
+                case Some(IncrementalSettings(shallMerge, stagingTableMergeKey, vaccumAfterLoad, cs, false, incrementalColumn, fromOffset, toOffset, isSnapshot, fieldsToDeduplicateOn, snapshotOptimizingFilter, deltaTime, _)) =>
                     val dropStatingTableStr = if (shallMerge || isSnapshot) s"DROP TABLE IF EXISTS $redshiftStagingTableName;" else ""
 
                     logger.info(s"dropStatingTableStr = {}", dropStatingTableStr)
