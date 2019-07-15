@@ -46,7 +46,6 @@ libraryDependencies ++= Seq(
     "com.github.scopt" %% "scopt" % "3.5.0",
     "javax.mail" % "mail" % "1.4.7",
     "io.dropwizard" % "dropwizard-metrics" % "1.0.5",
-    "com.github.goibibo" % "dataplatform_utils_2.10" % "v1.6",
     "ch.qos.logback" % "logback-classic" % "1.2.3",
     "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.7.8",
     "org.scalatest" %% "scalatest" % scalaTestVersion % Test,
